@@ -6,6 +6,7 @@ import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 # from accelerate import Accelerator
 import numpy as np
+import time
 
 print("PyTorch version:", torch.__version__)
 print("CUDA version:", torch.version.cuda)
@@ -129,7 +130,10 @@ def objective_func(x):
     with open("prune_layer_config.yaml", "w") as f:
         json.dump(config, f)
     # Command: mergekit-yaml ./yaml_config/prune_layer_config.yaml ./LLAMA3/prune_llm --cuda
+    # Track speed of execution
+    start_time = time.time()
     result = subprocess.run(["mergekit-yaml", "./prune_layer_config.yaml", f"./{model_name}/prune_llm", "--cuda"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print(f"Time taken to prune model: {time.time() - start_time:.2f} seconds")
 #     tokenizer = AutoTokenizer.from_pretrained(f"./{model_name}")
 #     tokenizer.pad_token = tokenizer.eos_token
 #     pruned_model = AutoModelForCausalLM.from_pretrained(f"./{model_name}/prune_llm")#.to(device)
