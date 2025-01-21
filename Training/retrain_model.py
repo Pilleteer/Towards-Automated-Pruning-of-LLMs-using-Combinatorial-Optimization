@@ -17,18 +17,21 @@ from transformers import (
     TrainingArguments,
 )
 
-from yaml_gen import generate_config
+from Optimization.yaml_gen import generate_config, delete_tensor_files
 from trl import SFTTrainer
 
-pruned_path = "./LLAMA3/prune_llm"
-model_name = "LLAMA3"
-x = [int(i) for i in [26.74531506, 21.75790056, 22.00573376]]
-
-config = generate_config(model_name, x)
+pruned_path = "./LLAMA3/70B/prune_llm_2"
+# pruned_path = "./LLAMA3/70B/prune_llm"
+model_name = "Llama-3.1-70B-Instruct"
+x = [int(i) for i in [64, 41, 37, 48, 40, 47, 16, 14, 26, 61] ]
+# x = [int(i) for i in]
+max_layers = 79
+config = generate_config(model_name, x, max_layers)
 with open("./prune_layer_config.yaml", "w") as f:
     json.dump(config, f)
+delete_tensor_files(pruned_path)
 # Command: mergekit-yaml ./yaml_config/prune_layer_config.yaml ./LLAMA3/prune_llm --cuda
-result = subprocess.run(["mergekit-yaml", "./prune_layer_config.yaml", f"./{model_name}/prune_llm", "--cuda"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+result = subprocess.run(["mergekit-yaml", "./prune_layer_config.yaml", "./LLAMA3/70B/prune_llm_2", "--cuda"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 torch.manual_seed(42)
@@ -45,13 +48,13 @@ class ScriptArguments:
 
 
     per_device_train_batch_size: Optional[int] = field(default=1)
-    per_device_eval_batch_size: Optional[int] = field(default=4)
-    gradient_accumulation_steps: Optional[int] = field(default=17)
+    per_device_eval_batch_size: Optional[int] = field(default=2)
+    gradient_accumulation_steps: Optional[int] = field(default=8)
     learning_rate: Optional[float] = field(default=3e-4)
     max_grad_norm: Optional[float] = field(default=0.3)
     weight_decay: Optional[int] = field(default=0.01)
     lora_alpha: Optional[int] = field(default=16)
-    lora_dropout: Optional[float] = field(default=0.0)
+    lora_dropout: Optional[float] = field(default=0.1)
     lora_r: Optional[int] = field(default=8)
     max_seq_length: Optional[int] = field(default=256)
     model_name: Optional[str] = field(
@@ -63,7 +66,7 @@ class ScriptArguments:
         }
     )
     dataset_name: Optional[str] = field(
-        default="tatsu-lab/alpaca",
+        default="vicgalle/alpaca-gpt4",
         metadata={"help": "The preference dataset to use."},
     )
 
@@ -110,21 +113,25 @@ class ScriptArguments:
     )
     lr_scheduler_type: str = field(
         # default="cosine_with_warmup",
-        default="cosine",
-
+        # default="cosine",
+        default="constant_with_warmup",
 
         metadata={"help": "Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis"},
     )
-    max_steps: int = field(default=100, metadata={"help": "How many optimizer update steps to take"})
-    warmup_steps: int = field(default=10, metadata={"help": "# of steps to do a warmup for"})
+    # max_steps: int = field(default=4375, metadata={"help": "How many optimizer update steps to take"})
+    warmup_steps: int = field(default=200, metadata={"help": "# of steps to do a warmup for"})
     group_by_length: bool = field(
         default=True,
         metadata={
             "help": "Group sequences into batches with same length. Saves memory and speeds up training considerably."
         },
     )
-    save_steps: int = field(default=20, metadata={"help": "Save checkpoint every X updates steps."})
-    logging_steps: int = field(default=5, metadata={"help": "Log every X updates steps."})
+    save_steps: int = field(default=500, metadata={"help": "Save checkpoint every X updates steps."})
+    # save_strategy: Optional[str] = field(
+    #             default="epoch",
+    #             metadata={"help": "The strategy to use for saving checkpoints. Options: 'steps', 'epoch'."},
+    # )
+    logging_steps: int = field(default=10, metadata={"help": "Log every X updates steps."})
     merge_and_push: Optional[bool] = field(
         default=True,
         metadata={"help": "Merge and push weights after training"},
@@ -186,12 +193,12 @@ def gen_batches_train():
 def create_and_prepare_model(args):
     compute_dtype = getattr(torch, args.bnb_4bit_compute_dtype)
     # commented qlora stuff 
-    # bnb_config = BitsAndBytesConfig(
-    #     load_in_4bit=args.use_4bit,
-    #     bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-    #     bnb_4bit_compute_dtype=compute_dtype,
-    #     bnb_4bit_use_double_quant=args.use_nested_quant,
-    # )
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=args.use_4bit,
+        bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+        bnb_4bit_compute_dtype=compute_dtype,
+        bnb_4bit_use_double_quant=args.use_nested_quant,
+    )
 
 
     if compute_dtype == torch.float16 and args.use_4bit:
@@ -210,9 +217,9 @@ def create_and_prepare_model(args):
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name, 
-        # quantization_config=bnb_config, 
+        quantization_config=bnb_config, 
         device_map=device_map, 
-        use_auth_token=True,
+        token=True,
     )
     
     
@@ -243,12 +250,13 @@ training_arguments = TrainingArguments(
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
     optim=script_args.optim,
     save_steps=script_args.save_steps,
+    # save_strategy=script_args.save_strategy,
     logging_steps=script_args.logging_steps,
     learning_rate=script_args.learning_rate,
     fp16=script_args.fp16,
     bf16=script_args.bf16,
     max_grad_norm=script_args.max_grad_norm,
-    max_steps=script_args.max_steps,
+    # max_steps=script_args.max_steps,
     warmup_steps=script_args.warmup_steps,
     group_by_length=script_args.group_by_length,
     lr_scheduler_type=script_args.lr_scheduler_type,
@@ -277,7 +285,7 @@ trainer = SFTTrainer(
 
 
 trainer.train()
-
+# trainer.train(resume_from_checkpoint=True)
 
 if script_args.merge_and_push:
     output_dir = os.path.join(script_args.output_dir, "final_checkpoints")
@@ -295,3 +303,4 @@ if script_args.merge_and_push:
 
     output_merged_dir = os.path.join(script_args.output_dir, "final_merged_checkpoint")
     model.save_pretrained(output_merged_dir, safe_serialization=True)
+

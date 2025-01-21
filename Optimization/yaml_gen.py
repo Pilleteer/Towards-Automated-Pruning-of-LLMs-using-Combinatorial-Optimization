@@ -14,12 +14,16 @@ print("CUDA version:", torch.version.cuda)
 # accelerator = Accelerator()
 # device = accelerator.device
 
-model_name = "LLAMA3"
-original_model_size = 15316.60 #Mb
-original_model_acc = 0.7918
-original_model_time = 566.7846715450287
+model_name = "Llama-3.1-70B-Instruct"
+# original_model_size = 15316.60 #Mb
+# original_model_acc = 0.7918
+# original_model_time = 566.7846 #932.4181
+original_model_size = 117760 #Mb
+original_model_acc = 0.88 #temp
+original_model_time = 3549
 
-pruned_path = "./LLAMA3/prune_llm"
+# pruned_path = "./LLAMA3/prune_llm"
+pruned_path = "./LLAMA3/70B/prune_llm"
 
 def count_nonzero_params(model):
     return sum(p.nonzero().size(0) for p in model.parameters())
@@ -46,6 +50,7 @@ def get_acc(result):
         if result.stderr:
             print(result.stderr)
         print("Normalized Accuracy not found in the output.")
+        return 0
     
 
 
@@ -57,6 +62,7 @@ def get_path_size(model_path):
     model_size = 0
 
     # List all files in the specified directory
+    print("Model's path = ", model_path)
     files = os.listdir(model_path)
     
     # Filter out the shard files based on naming pattern
@@ -82,17 +88,18 @@ def src_config(begin, dest, model_name):
         ]
     }
 
-def generate_config(model_name, x):
+def generate_config(model_name, x, max_layers):
     # x as array of layer that want to be sliced from 1 to 32
     config = {
         "dtype": "bfloat16",
         "merge_method": "passthrough",
+        # "merge_method": "breadcrumbs_ties",
         "slices": [
         ]
     }
     x = sorted(x)
     begin = 0
-    dest = 32
+    dest = max_layers
     if len(x) == 0:
         config["slices"].append(src_config(begin, dest, model_name))
     else:
@@ -103,7 +110,7 @@ def generate_config(model_name, x):
             dest = i-1
             config["slices"].append(src_config(begin, dest, model_name))
             begin = i+1
-        dest = 32
+        dest = max_layers
         config["slices"].append(src_config(begin, dest, model_name))
     return config
 
@@ -125,64 +132,49 @@ def delete_tensor_files(model_path):
 
 def objective_func(x):
     print("x: ", x)
-    x = [int(i) for i in x]
+    x = [round(i) for i in x]
+    x = list(set(x))
     print("============================================")
-    config = generate_config(model_name, x)
+    max_layers = 79
+    config = generate_config(model_name, x, max_layers)
     with open("prune_layer_config.yaml", "w") as f:
         json.dump(config, f)
     # Command: mergekit-yaml ./yaml_config/prune_layer_config.yaml ./LLAMA3/prune_llm --cuda
-    # Track speed of execution
-    
-    result = subprocess.run(["mergekit-yaml", "./prune_layer_config.yaml", f"./{model_name}/prune_llm", "--cuda"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
+    if len(x) >= 10:
+        result = subprocess.run(["mergekit-yaml", "./prune_layer_config.yaml", "./LLAMA3/70B/prune_llm", "--cuda"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 #     tokenizer = AutoTokenizer.from_pretrained(f"./{model_name}")
 #     tokenizer.pad_token = tokenizer.eos_token
 #     pruned_model = AutoModelForCausalLM.from_pretrained(f"./{model_name}/prune_llm")#.to(device)
+        pruned_model_size = get_path_size(pruned_path)
 
-    pruned_model_size = get_path_size(pruned_path)
 #     print(f"Model size: {pruned_model_size} Mb")
     command = [
-        'accelerate', 'launch', '-m',# '--multi_gpu', '--num_processes', '2',
+        'accelerate', 'launch', '-m', '--multi_gpu', '--num_processes', '2',
         'lm_eval', 
         '--model', 'hf',
-        '--model_args', 'pretrained=LLAMA3/prune_llm',
+        #'--model_args', 'parallelize=True,pretrained=LLAMA3/prune_llm',
+        '--model_args', 'parallelize=True,device_map=auto,pretrained=LLAMA3/70B/prune_llm/,load_in_4bit=True',
         '--tasks', 'hellaswag',
         '--device', 'cuda:0',
-        '--batch_size', '8'
+        '--batch_size', '32'
     ]
 
     start_time = time.time()
-    result = subprocess.run(command, capture_output=True, text=True)
-    taken_time = time.time() - start_time
-    print(f"Time taken: {taken_time:.2f} seconds")
+    if len(x) >= 10:
+        result = subprocess.run(command, capture_output=True, text=True)
+        taken_time = time.time() - start_time
+        print(f"Time taken: {taken_time:.2f} seconds")
+#       print(result.stdout)
+        pruned_model_acc = get_acc(result)
+    else:
+        print("len(x)'s value is less than 10, skiping...")
+        pruned_model_acc = 0
+        taken_time = original_model_time
+        pruned_model_size = original_model_size
 
-#     print(result.stdout)
-    pruned_model_acc = get_acc(result)
     
     size_diff = (original_model_size - pruned_model_size) / original_model_size
     time_diff = (original_model_time - taken_time) / original_model_time
     print(f"Size diff: {size_diff:.2f}, Time diff: {time_diff:.2f}")
     delete_tensor_files(pruned_path)
-    return [size_diff, pruned_model_acc, time_diff]
-
-
-from mealpy import PSO, FloatVar, Problem
-
-layer_to_prune = 5
-
-problem_multi = {
-    "obj_func": objective_func,
-    "bounds": FloatVar(lb=[i for i in range(layer_to_prune)], ub=[i for i in range(32 - layer_to_prune,32)]),
-    "minmax": "min",
-    "obj_weights": [1, 1, 1]               # Define it or default value will be [1, 1, 1]
-}
-
-## Define the model and solve the problem
-mealpy_model = PSO.OriginalPSO(epoch=10, pop_size=50)
-# Solve the problem using the PSO model
-best_solution, best_fitness = mealpy_model.solve(problem=problem_multi)
-
-# Print the global best x and its fitness value
-print("\n=== Optimization Results ===")
-print(f"Global Best x: {best_solution}")
-print(f"Global Best Fitness Value: {best_fitness}")
+    return [size_diff, time_diff, pruned_model_acc]

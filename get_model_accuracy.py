@@ -47,3 +47,5 @@ result = subprocess.run(command, capture_output=True, text=True)
 end = time.time()
 print(f"Execution time: {end - start}")
 pruned_model_acc = get_acc(result)
+
+
