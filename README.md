@@ -1,1 +1,1 @@
-# Towards Automated Pruning of LLMs using Combinatorial Optimization
+# Automated Pruning Framework for Large Language Models using Combinatorial Optimization

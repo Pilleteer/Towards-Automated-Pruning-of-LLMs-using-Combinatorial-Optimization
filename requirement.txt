@@ -1,0 +1,8 @@
+torch
+transformers
+peft
+datasets
+trl
+bitsandbytes
+mealpy
+mergekit
