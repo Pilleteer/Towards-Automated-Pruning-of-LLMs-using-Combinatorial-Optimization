@@ -21,7 +21,7 @@ def prune_model(model_name, prune_layers, output_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="LLAMA3")
-    parser.add_argument("--prune_layers", type=str, default="0,1,2,7,3,4,6,8,9,12")
+    parser.add_argument("--prune_layers", type=str, default="0,1,2,7,3,4,6,8,9,10")
     parser.add_argument("--output_path", type=str, default="./LLAMA3/prune_llm")
 
     args = parser.parse_args()

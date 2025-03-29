@@ -1,5 +1,6 @@
 import os
 import json
+from transformers import AutoModel
 
 def get_path_size(model_path):
     total_size = sum(os.path.getsize(os.path.join(model_path, f)) for f in os.listdir(model_path) if f.startswith("model-"))
@@ -21,3 +22,12 @@ def delete_tensor_files(model_path):
     for f in os.listdir(model_path):
         if f.startswith("model-") and f.endswith(".safetensors"):
             os.remove(os.path.join(model_path, f))
+
+def get_available_layers(model_path):
+    model_name = "meta-llama/Meta-Llama-3-8B"  # Change this to your model
+    model = AutoModel.from_pretrained(model_name)
+
+    # Find the total number of layers
+    num_layers = len(model.encoder.layer) if hasattr(model, "encoder") else model.config.num_hidden_layers
+    print(f"Total available layers for pruning: {num_layers}")
+    return num_layers
