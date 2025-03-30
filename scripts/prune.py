@@ -2,11 +2,11 @@ import os
 import json
 import argparse
 import subprocess
-from utils import generate_config, delete_tensor_files
+from utils import generate_config, delete_tensor_files, get_available_layers
 
-def prune_model(model_name, prune_layers, output_path):
+def prune_model(model_name, prune_layers, output_path, max_layer):
     """Generates config and prunes the model."""
-    config = generate_config(model_name, prune_layers)
+    config = generate_config(model_name, prune_layers, max_layer)
     
     with open("./configs/prune_layer_config.yaml", "w") as f:
         json.dump(config, f)
