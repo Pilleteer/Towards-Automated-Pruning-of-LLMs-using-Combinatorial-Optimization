@@ -13,7 +13,7 @@ tasks = None
 device = None
 batch_size = None
 max_layer = None
-prune_path = "./prune_model"
+prune_path = "./pruned_model"
 
 def objective_func(x):
     """Objective function for optimization: Prune, evaluate, and return accuracy."""
@@ -82,8 +82,14 @@ if __name__ == "__main__":
     batch_size = args.batch_size
 
     max_layer = get_available_layers(model_name)
+
+    if args.layer_to_prune <= 0:
+        raise ValueError("Number of layers to prune must be greater than 0.")
     
     print(f"Max layer available for pruning: {max_layer}")
+    if args.layer_to_prune >= max_layer:
+        raise ValueError(f"Number of layers to prune must be less than {max_layer}.")
+    
     # Run the optimization process
     print(f"Running optimization with {args.optimizer}...")
     optimize_pruning(args.layer_to_prune, args.optimizer, max_layer)

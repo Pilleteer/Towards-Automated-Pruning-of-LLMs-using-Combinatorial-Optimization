@@ -1,22 +1,27 @@
-# Model Configuration
 model:
-  name: "Llama-3.1-70B-Instruct"
-  path: "./LLAMA3/prune_llm"
+  name: "Model Name"
+  path: "/path/to/original/model"
 
-# Pruning Configuration
 pruning:
-  method: "magnitude"  # Options: magnitude, structured, random
-  selected_layers: [0, 1, 2, 7, 3, 4, 6, 8, 9, 12]  
+  method: "magnitude"
+  selected_layers: "2,4,6,8,10"
 
-# Optimization Configuration
 optimization:
-  algorithm: "PSO"  # Any algorithm from Mealpy
-  num_generations: 100
-  population_size: 50
+  algorithm: "genetic"
+  num_generations: 5
+  population_size: 10
 
-# Evaluation Configuration
+training:
+  num_train_epochs: 1
+  learning_rate: 2e-5
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+  max_seq_length: 512
+  output_dir: "/path/to/output"
+  save_steps: 500
+
 evaluation:
-  model_name: "hf"
-  tasks: "hellaswag"
-  device: "cuda:0"
-  batch_size: 8
+  model_name: "llama-7b-pruned"
+  tasks: ["hellaswag", "piqa", "arc"]
+  device: "cuda"
+  batch_size: 16

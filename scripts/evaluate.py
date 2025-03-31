@@ -33,7 +33,7 @@ def evaluate_model(model_path, model_name, tasks, device, batch_size):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a pruned model with lm_eval.")
     parser.add_argument("--model_path", type=str, default="LLAMA3", help="Path to the pruned model")
-    parser.add_argument("--model_name", type=str, default="hf", help="Model type (default: 'hf')")
+    parser.add_argument("--model_name", type=str, default="hf", help="Model type (e.g., 'hf', etc.)")
     parser.add_argument("--tasks", type=str, default="hellaswag", help="Evaluation tasks")
     parser.add_argument("--device", type=str, default="cuda:0", help="Device to run evaluation (e.g., 'cuda:0')")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for evaluation")
